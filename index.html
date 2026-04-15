@@ -1,0 +1,215 @@
+
+<style>
+.ctrl { display:flex; align-items:center; gap:10px; margin-bottom:10px; font-size:13px; color:var(--color-text-secondary); }
+.ctrl label { width:100px; flex-shrink:0; }
+.ctrl input[type=range] { flex:1; }
+.ctrl .val { width:46px; text-align:right; font-weight:500; color:var(--color-text-primary); }
+.legend { display:flex; flex-wrap:wrap; gap:14px; font-size:12px; color:var(--color-text-secondary); margin-bottom:6px; }
+.legend span { display:flex; align-items:center; gap:5px; }
+.swatch-line { width:18px; height:2.5px; display:inline-block; border-radius:2px; }
+.tag { display:inline-block; font-size:11px; padding:2px 7px; border-radius:4px; background:var(--color-background-secondary); color:var(--color-text-secondary); border:0.5px solid var(--color-border-tertiary); margin-left:4px; }
+</style>
+
+<h2 class="sr-only">Interactive Weibull psychometric function with MIB experiment parameters: intensities 1–9, slopes 2–8, lapse 0.2, lower asymptote 0.01–0.8</h2>
+
+<div style="padding:1rem 0 0;">
+  <div class="legend">
+    <span><span class="swatch-line" style="background:#378add;"></span>p(response)</span>
+    <span><span class="swatch-line" style="background:#D85A30; border-top:2px dashed #D85A30; height:0;"></span>threshold</span>
+    <span><span class="swatch-line" style="background:#639922; border-top:2px dashed #639922; height:0;"></span>criterion</span>
+  </div>
+
+  <div style="position:relative; width:100%; height:300px;">
+    <canvas id="pf" role="img" aria-label="Weibull psychometric function with MIB experiment parameters, intensity range 1 to 9"></canvas>
+  </div>
+
+  <div style="margin-top:1.25rem;">
+    <div class="ctrl">
+      <label>Threshold<span class="tag">1 – 9</span></label>
+      <input type="range" id="sl_thresh" min="1" max="9" step="0.05" value="5">
+      <span class="val" id="v_thresh">5.00</span>
+    </div>
+    <div class="ctrl">
+      <label>Slope<span class="tag">2 – 8</span></label>
+      <input type="range" id="sl_slope" min="2" max="8" step="0.05" value="5">
+      <span class="val" id="v_slope">5.0</span>
+    </div>
+    <div class="ctrl">
+      <label>Lower asymptote<span class="tag">0.01 – 0.8</span></label>
+      <input type="range" id="sl_guess" min="0.01" max="0.8" step="0.01" value="0.4">
+      <span class="val" id="v_guess">0.40</span>
+    </div>
+    <div class="ctrl">
+      <label>Lapse rate<span class="tag">fixed 0.2</span></label>
+      <input type="range" id="sl_lapse" min="0.01" max="0.4" step="0.005" value="0.2" disabled style="opacity:0.45;">
+      <span class="val" id="v_lapse">0.200</span>
+    </div>
+  </div>
+
+  <div id="info" style="margin-top:0.75rem; font-size:13px; color:var(--color-text-secondary); line-height:1.6;"></div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<script>
+const N = 161;
+const xMin = 1, xMax = 9;
+const xs = Array.from({length: N}, (_, i) => xMin + i * (xMax - xMin) / (N - 1));
+
+function weibull(x, thresh, slope, guess, lapse) {
+  return guess + (1 - guess - lapse) * (1 - Math.exp(-Math.pow(10, slope * (x - thresh))));
+}
+
+function criterionLevel(thresh, slope, guess, lapse) {
+  return guess + (1 - guess - lapse) * (1 - Math.exp(-1));
+}
+
+const isDark = matchMedia('(prefers-color-scheme: dark)').matches;
+const gridColor  = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.07)';
+const labelColor = isDark ? '#aaa' : '#888';
+
+const ctx = document.getElementById('pf').getContext('2d');
+const chart = new Chart(ctx, {
+  type: 'line',
+  data: {
+    labels: xs.map(x => x.toFixed(2)),
+    datasets: [
+      {
+        label: 'p(response)',
+        data: [],
+        borderColor: '#378add',
+        borderWidth: 2.5,
+        pointRadius: 0,
+        tension: 0.3,
+        fill: false
+      },
+      {
+        label: 'Threshold',
+        data: [],
+        borderColor: '#D85A30',
+        borderWidth: 1.5,
+        borderDash: [5, 4],
+        pointRadius: 0,
+        fill: false
+      },
+      {
+        label: 'Criterion',
+        data: [],
+        borderColor: '#639922',
+        borderWidth: 1.5,
+        borderDash: [5, 4],
+        pointRadius: 0,
+        fill: false
+      }
+    ]
+  },
+  options: {
+    responsive: true,
+    maintainAspectRatio: false,
+    animation: { duration: 0 },
+    plugins: {
+      legend: { display: false },
+      tooltip: {
+        filter: item => item.datasetIndex === 0,
+        callbacks: {
+          title: items => 'Intensity: ' + parseFloat(items[0].label).toFixed(2),
+          label: ctx => 'p = ' + ctx.parsed.y.toFixed(3)
+        }
+      }
+    },
+    scales: {
+      x: {
+        title: { display: true, text: 'Intensity (mask contrast)', color: labelColor, font: { size: 12 } },
+        ticks: {
+          color: labelColor,
+          maxTicksLimit: 9,
+          callback: (_, i) => {
+            const v = xs[i];
+            return Number.isInteger(Math.round(v * 10) / 10) && Math.abs(v - Math.round(v)) < 0.01
+              ? v.toFixed(0) : null;
+          }
+        },
+        grid: { color: gridColor },
+        border: { color: gridColor }
+      },
+      y: {
+        min: 0, max: 1,
+        title: { display: true, text: 'P(response)', color: labelColor, font: { size: 12 } },
+        ticks: { color: labelColor, stepSize: 0.25, callback: v => (v * 100).toFixed(0) + '%' },
+        grid: { color: gridColor },
+        border: { color: gridColor }
+      }
+    }
+  }
+});
+
+function getParams() {
+  return {
+    thresh: parseFloat(document.getElementById('sl_thresh').value),
+    slope:  parseFloat(document.getElementById('sl_slope').value),
+    guess:  parseFloat(document.getElementById('sl_guess').value),
+    lapse:  0.2
+  };
+}
+
+function threshToIdx(thresh) {
+  return Math.min(N - 1, Math.max(0, Math.round((thresh - xMin) / (xMax - xMin) * (N - 1))));
+}
+
+function update() {
+  const {thresh, slope, lapse, guess} = getParams();
+
+  document.getElementById('v_thresh').textContent = thresh.toFixed(2);
+  document.getElementById('v_slope').textContent  = slope.toFixed(1);
+  document.getElementById('v_guess').textContent  = guess.toFixed(2);
+  document.getElementById('v_lapse').textContent  = lapse.toFixed(3);
+
+  const crit    = criterionLevel(thresh, slope, guess, lapse);
+  const pctCrit = (crit * 100).toFixed(1);
+  const tIdx    = threshToIdx(thresh);
+
+  chart.data.datasets[0].data = xs.map(x => {
+    const p = weibull(x, thresh, slope, guess, lapse);
+    return Math.min(Math.max(p, 0), 1);
+  });
+
+  chart.data.datasets[1].data = xs.map((x, i) => i === tIdx ? null : (x <= thresh ? null : (i === tIdx + 1 ? crit : null)));
+  const threshData = new Array(N).fill(null);
+  for (let i = 0; i <= tIdx + 1; i++) threshData[i] = null;
+  const vertN = 30;
+  for (let step = 0; step <= vertN; step++) {
+    const yv = (step / vertN) * crit;
+    const fi = tIdx - Math.round((vertN - step) * 0.01);
+    if (fi >= 0 && fi < N) threshData[tIdx] = crit;
+  }
+  const threshVert = new Array(N).fill(null);
+  threshVert[tIdx] = 0;
+  if (tIdx + 1 < N) threshVert[tIdx + 1] = crit;
+
+  const horzData = xs.map((x, i) => (x <= thresh) ? crit : null);
+  chart.data.datasets[2].data = horzData;
+
+  const vertData = new Array(N).fill(null);
+  vertData[tIdx] = 0;
+  vertData[tIdx] = crit;
+  for (let i = 0; i <= tIdx; i++) {
+    if (i === tIdx) { vertData[i] = crit; }
+    else vertData[i] = null;
+  }
+  chart.data.datasets[1].data = vertData;
+
+  chart.update('none');
+
+  const floor = (guess * 100).toFixed(0);
+  const ceil  = ((1 - lapse) * 100).toFixed(0);
+  document.getElementById('info').innerHTML =
+    `At threshold <strong style="color:var(--color-text-primary)">${thresh.toFixed(2)}</strong>, ` +
+    `performance reaches <strong style="color:var(--color-text-primary)">${pctCrit}%</strong> — ` +
+    `between the lower asymptote&nbsp;(${floor}%) and ceiling&nbsp;(${ceil}%). ` +
+    `With lapse = 0.2, the observer misses 20% of clearly visible stimuli.`;
+}
+
+['sl_thresh','sl_slope','sl_guess'].forEach(id =>
+  document.getElementById(id).addEventListener('input', update));
+
+update();
+</script>

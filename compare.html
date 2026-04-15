@@ -118,7 +118,7 @@ const chart = new Chart(ctx, {
   options: {
     responsive:true, maintainAspectRatio:false, animation:{duration:0},
     plugins:{ legend:{display:false}, tooltip:{ filter: i => i.datasetIndex < 2,
-      callbacks:{ title: i => 'Intensity: '+parseFloat(i[0].label).toFixed(2),
+      callbacks:{ title: i => 'Mask size (in radius): '+parseFloat(i[0].label).toFixed(2),
                   label: i => ['Curve A','Curve B'][i.datasetIndex]+': p = '+i.parsed.y.toFixed(3) }}},
     scales:{
       x:{ title:{display:true, text:'Intensity (mask contrast)', color:labelColor, font:{size:12}},

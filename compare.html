@@ -121,7 +121,7 @@ const chart = new Chart(ctx, {
       callbacks:{ title: i => 'Mask size (in radius): '+parseFloat(i[0].label).toFixed(2),
                   label: i => ['Curve A','Curve B'][i.datasetIndex]+': p = '+i.parsed.y.toFixed(3) }}},
     scales:{
-      x:{ title:{display:true, text:'Intensity (mask contrast)', color:labelColor, font:{size:12}},
+      x:{ title:{display:true, text:'Mask size (in radius)', color:labelColor, font:{size:12}},
           ticks:{ color:labelColor, maxTicksLimit:9,
             callback:(_,i)=>{ const v=xs[i]; return Math.abs(v-Math.round(v))<0.01?v.toFixed(0):null; }},
           grid:{color:gridColor}, border:{color:gridColor} },

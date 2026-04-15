@@ -1,0 +1,197 @@
+
+<style>
+.legend { display:flex; flex-wrap:wrap; gap:16px; font-size:12px; color:var(--color-text-secondary); margin-bottom:8px; }
+.legend span { display:flex; align-items:center; gap:5px; }
+.sw { width:18px; height:2.5px; display:inline-block; border-radius:2px; }
+.ctrl { display:flex; align-items:center; gap:10px; margin-bottom:10px; font-size:13px; color:var(--color-text-secondary); }
+.ctrl label { width:110px; flex-shrink:0; }
+.ctrl .val { width:46px; text-align:right; font-weight:500; color:var(--color-text-primary); }
+.cards { display:grid; grid-template-columns:repeat(auto-fit,minmax(0,1fr)); gap:10px; margin:1rem 0; }
+.card { background:var(--color-background-secondary); border-radius:var(--border-radius-md); padding:12px 14px; }
+.card .clabel { font-size:11px; color:var(--color-text-secondary); margin:0 0 4px; }
+.card .cval { font-size:20px; font-weight:500; color:var(--color-text-primary); margin:0; }
+.card .csub { font-size:11px; color:var(--color-text-secondary); margin:2px 0 0; }
+.warn { font-size:12px; padding:8px 12px; border-radius:var(--border-radius-md); border-left:3px solid #E24B4A; background:var(--color-background-danger); color:var(--color-text-danger); margin-top:8px; }
+</style>
+
+<h2 class="sr-only">Side-by-side comparison of two QUEST+ psychometric curves with different lower asymptote ranges showing how their criterion levels differ</h2>
+
+<div style="padding:1rem 0 0;">
+  <div class="legend">
+    <span><span class="sw" style="background:#378add;"></span>narrow prior (0.1–0.2)</span>
+    <span><span class="sw" style="background:#D85A30;"></span>wide prior (0.1–0.8)</span>
+    <span><span class="sw" style="background:#378add; border-top:2px dashed #378add; height:0;"></span>criterion A</span>
+    <span><span class="sw" style="background:#D85A30; border-top:2px dashed #D85A30; height:0;"></span>criterion B</span>
+  </div>
+
+  <div style="position:relative; width:100%; height:280px;">
+    <canvas id="pfChart" role="img" aria-label="Two psychometric curves with identical thresholds but different criterion levels due to different lower asymptote values">Two curves showing criterion divergence.</canvas>
+  </div>
+
+  <div style="margin-top:1.25rem;">
+    <div class="ctrl">
+      <label>Threshold (shared)</label>
+      <input type="range" id="sl_thresh" min="1" max="9" step="0.05" value="5">
+      <span class="val" id="v_thresh">5.00</span>
+    </div>
+    <div class="ctrl">
+      <label>Slope (shared)</label>
+      <input type="range" id="sl_slope" min="2" max="8" step="0.1" value="5">
+      <span class="val" id="v_slope">5.0</span>
+    </div>
+    <div class="ctrl">
+      <label>Asymptote A (narrow)</label>
+      <input type="range" id="sl_gA" min="0.1" max="0.2" step="0.01" value="0.15">
+      <span class="val" id="v_gA">0.15</span>
+    </div>
+    <div class="ctrl">
+      <label>Asymptote B (wide)</label>
+      <input type="range" id="sl_gB" min="0.1" max="0.8" step="0.01" value="0.45">
+      <span class="val" id="v_gB">0.45</span>
+    </div>
+  </div>
+
+  <div class="cards">
+    <div class="card">
+      <p class="clabel">Procedure A criterion</p>
+      <p class="cval" id="critA">—</p>
+      <p class="csub">narrow prior (0.1–0.2)</p>
+    </div>
+    <div class="card">
+      <p class="clabel">Procedure B criterion</p>
+      <p class="cval" id="critB">—</p>
+      <p class="csub">wide prior (0.1–0.8)</p>
+    </div>
+    <div class="card">
+      <p class="clabel">Criterion gap</p>
+      <p class="cval" id="critGap">—</p>
+      <p class="csub">absolute difference</p>
+    </div>
+    <div class="card">
+      <p class="clabel">Equiv. stim offset</p>
+      <p class="cval" id="stimOffset">—</p>
+      <p class="csub">units to reach same p</p>
+    </div>
+  </div>
+
+  <div id="warnBox" class="warn" style="display:none;"></div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<script>
+const N = 161, xMin = 1, xMax = 9;
+const xs = Array.from({length:N}, (_,i) => xMin + i*(xMax-xMin)/(N-1));
+const LAPSE = 0.2;
+
+function weibull(x, thresh, slope, guess, lapse) {
+  return guess + (1 - guess - lapse) * (1 - Math.exp(-Math.pow(10, slope*(x-thresh))));
+}
+function crit(guess) {
+  return guess + (1 - guess - LAPSE) * (1 - Math.exp(-1));
+}
+function invWeibull(p, thresh, slope, guess, lapse) {
+  const range = 1 - guess - lapse;
+  if (range <= 0) return NaN;
+  const inner = (p - guess) / range;
+  if (inner <= 0 || inner >= 1) return NaN;
+  return thresh + Math.log10(-Math.log(1 - inner)) / slope;
+}
+
+const isDark = matchMedia('(prefers-color-scheme: dark)').matches;
+const gridColor  = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.07)';
+const labelColor = isDark ? '#aaa' : '#888';
+
+const ctx = document.getElementById('pfChart').getContext('2d');
+const chart = new Chart(ctx, {
+  type: 'line',
+  data: {
+    labels: xs.map(x => x.toFixed(2)),
+    datasets: [
+      { label:'Curve A', data:[], borderColor:'#378add', borderWidth:2.5, pointRadius:0, tension:0.3, fill:false },
+      { label:'Curve B', data:[], borderColor:'#D85A30', borderWidth:2.5, pointRadius:0, tension:0.3, fill:false },
+      { label:'Crit A h', data:[], borderColor:'#378add', borderWidth:1.5, borderDash:[5,4], pointRadius:0, fill:false },
+      { label:'Crit B h', data:[], borderColor:'#D85A30', borderWidth:1.5, borderDash:[5,4], pointRadius:0, fill:false },
+      { label:'Crit A v', data:[], borderColor:'#378add', borderWidth:1.5, borderDash:[3,4], pointRadius:0, fill:false },
+      { label:'Crit B v', data:[], borderColor:'#D85A30', borderWidth:1.5, borderDash:[3,4], pointRadius:0, fill:false }
+    ]
+  },
+  options: {
+    responsive:true, maintainAspectRatio:false, animation:{duration:0},
+    plugins:{ legend:{display:false}, tooltip:{ filter: i => i.datasetIndex < 2,
+      callbacks:{ title: i => 'Intensity: '+parseFloat(i[0].label).toFixed(2),
+                  label: i => ['Curve A','Curve B'][i.datasetIndex]+': p = '+i.parsed.y.toFixed(3) }}},
+    scales:{
+      x:{ title:{display:true, text:'Intensity (mask contrast)', color:labelColor, font:{size:12}},
+          ticks:{ color:labelColor, maxTicksLimit:9,
+            callback:(_,i)=>{ const v=xs[i]; return Math.abs(v-Math.round(v))<0.01?v.toFixed(0):null; }},
+          grid:{color:gridColor}, border:{color:gridColor} },
+      y:{ min:0, max:1,
+          title:{display:true, text:'P(response)', color:labelColor, font:{size:12}},
+          ticks:{color:labelColor, stepSize:0.25, callback: v=>(v*100).toFixed(0)+'%'},
+          grid:{color:gridColor}, border:{color:gridColor} }
+    }
+  }
+});
+
+function tIdx(thresh) {
+  return Math.min(N-1, Math.max(0, Math.round((thresh-xMin)/(xMax-xMin)*(N-1))));
+}
+
+function update() {
+  const thresh = parseFloat(document.getElementById('sl_thresh').value);
+  const slope  = parseFloat(document.getElementById('sl_slope').value);
+  const gA     = parseFloat(document.getElementById('sl_gA').value);
+  const gB     = parseFloat(document.getElementById('sl_gB').value);
+
+  document.getElementById('v_thresh').textContent = thresh.toFixed(2);
+  document.getElementById('v_slope').textContent  = slope.toFixed(1);
+  document.getElementById('v_gA').textContent     = gA.toFixed(2);
+  document.getElementById('v_gB').textContent     = gB.toFixed(2);
+
+  const cA = crit(gA);
+  const cB = crit(gB);
+  const gap = Math.abs(cA - cB);
+
+  const xForCritAatB = invWeibull(cA, thresh, slope, gB, LAPSE);
+  const stimOffset = isNaN(xForCritAatB) ? null : Math.abs(xForCritAatB - thresh);
+
+  document.getElementById('critA').textContent   = (cA*100).toFixed(1)+'%';
+  document.getElementById('critB').textContent   = (cB*100).toFixed(1)+'%';
+  document.getElementById('critGap').textContent = (gap*100).toFixed(1)+'pp';
+  document.getElementById('stimOffset').textContent = stimOffset != null
+    ? stimOffset.toFixed(2)+' units' : 'out of range';
+
+  chart.data.datasets[0].data = xs.map(x => Math.min(Math.max(weibull(x,thresh,slope,gA,LAPSE),0),1));
+  chart.data.datasets[1].data = xs.map(x => Math.min(Math.max(weibull(x,thresh,slope,gB,LAPSE),0),1));
+
+  const tiA = tIdx(thresh);
+  const tiB = tIdx(thresh);
+  const horizA = new Array(N).fill(null);
+  const horizB = new Array(N).fill(null);
+  const vertA  = new Array(N).fill(null);
+  const vertB  = new Array(N).fill(null);
+
+  for (let i = 0; i <= tiA; i++) horizA[i] = cA;
+  for (let i = 0; i <= tiB; i++) horizB[i] = cB;
+  vertA[tiA] = 0; if (tiA+1 < N) vertA[tiA+1] = cA;
+  vertB[tiB] = 0; if (tiB+1 < N) vertB[tiB+1] = cB;
+
+  chart.data.datasets[2].data = horizA;
+  chart.data.datasets[3].data = horizB;
+  chart.data.datasets[4].data = vertA;
+  chart.data.datasets[5].data = vertB;
+  chart.update('none');
+
+  const warnBox = document.getElementById('warnBox');
+  if (gap > 0.1) {
+    warnBox.style.display = 'block';
+    warnBox.textContent = `Criterion gap of ${(gap*100).toFixed(1)} percentage points — the two thresholds are defined at substantially different performance levels and should not be directly compared without rescaling.`;
+  } else {
+    warnBox.style.display = 'none';
+  }
+}
+
+['sl_thresh','sl_slope','sl_gA','sl_gB'].forEach(id =>
+  document.getElementById(id).addEventListener('input', update));
+update();
+</script>

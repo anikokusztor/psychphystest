@@ -1,0 +1,670 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>QUEST+ Radius Threshold Estimator</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg:        #ffffff;
+    --bg-sec:    #f5f5f3;
+    --text:      #1a1a1a;
+    --text-sec:  #6b6b68;
+    --border:    rgba(0,0,0,0.12);
+    --border-sec:rgba(0,0,0,0.22);
+    --radius-md: 8px;
+    --radius-lg: 12px;
+    --teal-border:  #1D9E75;
+    --teal-text:    #0F6E56;
+    --teal-bg:      #E1F5EE;
+    --coral-border: #993C1D;
+    --coral-text:   #712B13;
+    --coral-bg:     #FAECE7;
+    --blue:         #378add;
+    --blue-dark:    #185FA5;
+    --purple:       #7F77DD;
+    --amber:        #EF9F27;
+    --grid:         rgba(0,0,0,0.07);
+    --lbl:          #888;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg:        #1e1e1c;
+      --bg-sec:    #2a2a28;
+      --text:      #e8e8e4;
+      --text-sec:  #9a9a94;
+      --border:    rgba(255,255,255,0.12);
+      --border-sec:rgba(255,255,255,0.22);
+      --teal-bg:      #0a2e1f;
+      --coral-bg:     #2e1208;
+      --blue:         #378add;
+      --blue-dark:    #5ba8e8;
+      --grid:         rgba(255,255,255,0.08);
+      --lbl:          #aaa;
+    }
+  }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    padding: 2rem 1.5rem;
+  }
+
+  .page {
+    max-width: 860px;
+    margin: 0 auto;
+  }
+
+  h1 {
+    font-size: 18px;
+    font-weight: 500;
+    margin-bottom: 4px;
+  }
+
+  .subtitle {
+    font-size: 13px;
+    color: var(--text-sec);
+    margin-bottom: 1.5rem;
+  }
+
+  .charts-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    margin-bottom: 1rem;
+  }
+
+  @media (max-width: 580px) {
+    .charts-grid { grid-template-columns: 1fr; }
+    .stimulus-row { grid-template-columns: 1fr !important; }
+  }
+
+  .chart-panel { display: flex; flex-direction: column; }
+
+  .legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    font-size: 12px;
+    color: var(--text-sec);
+    margin-bottom: 6px;
+  }
+
+  .legend span { display: flex; align-items: center; gap: 5px; }
+
+  .sw {
+    width: 18px;
+    height: 2.5px;
+    display: inline-block;
+    border-radius: 2px;
+  }
+
+  .sw-dashed {
+    width: 18px;
+    height: 0;
+    display: inline-block;
+    border-top: 2px dashed;
+  }
+
+  .chart-wrap {
+    position: relative;
+    width: 100%;
+    height: 220px;
+  }
+
+  .stimulus-row {
+    display: grid;
+    grid-template-columns: 150px 1fr;
+    gap: 20px;
+    align-items: center;
+    margin: 0.75rem 0;
+  }
+
+  .circle-panel {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .circle-label {
+    font-size: 11px;
+    color: var(--text-sec);
+  }
+
+  .radius-readout {
+    font-size: 12px;
+    color: var(--text-sec);
+  }
+
+  .radius-readout strong {
+    font-weight: 500;
+    color: var(--text);
+  }
+
+  .resp-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin: 0.75rem 0;
+  }
+
+  .resp-btn {
+    flex: 1;
+    padding: 11px 0;
+    font-size: 14px;
+    font-weight: 500;
+    border-radius: var(--radius-md);
+    cursor: pointer;
+    border: 0.5px solid var(--border-sec);
+    background: var(--bg);
+    color: var(--text);
+    transition: background 0.12s;
+  }
+
+  .resp-btn:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+  }
+
+  .resp-btn.yes { border-color: var(--teal-border); color: var(--teal-text); }
+  .resp-btn.yes:not(:disabled):hover { background: var(--teal-bg); }
+  .resp-btn.no  { border-color: var(--coral-border); color: var(--coral-text); }
+  .resp-btn.no:not(:disabled):hover  { background: var(--coral-bg); }
+
+  .reset-btn {
+    padding: 9px 16px;
+    font-size: 12px;
+    border-radius: var(--radius-md);
+    cursor: pointer;
+    border: 0.5px solid var(--border-sec);
+    background: transparent;
+    color: var(--text-sec);
+    transition: background 0.12s;
+  }
+
+  .reset-btn:hover { background: var(--bg-sec); }
+
+  .computing {
+    font-size: 12px;
+    color: var(--text-sec);
+    min-height: 18px;
+    margin-bottom: 4px;
+  }
+
+  .cards {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 10px;
+    margin: 0.5rem 0;
+  }
+
+  @media (max-width: 500px) {
+    .cards { grid-template-columns: repeat(2, 1fr); }
+  }
+
+  .card {
+    background: var(--bg-sec);
+    border-radius: var(--radius-md);
+    padding: 10px 12px;
+  }
+
+  .card .clabel {
+    font-size: 11px;
+    color: var(--text-sec);
+    margin-bottom: 3px;
+  }
+
+  .card .cval {
+    font-size: 18px;
+    font-weight: 500;
+    color: var(--text);
+  }
+
+  .history-row {
+    font-size: 12px;
+    color: var(--text-sec);
+    margin-top: 6px;
+    line-height: 2;
+  }
+
+  .hist-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 11px;
+    padding: 2px 7px;
+    border-radius: 12px;
+    margin: 2px;
+  }
+
+  .hist-yes { background: var(--teal-bg);  color: var(--teal-text);  }
+  .hist-no  { background: var(--coral-bg); color: var(--coral-text); }
+
+  .divider {
+    border: none;
+    border-top: 0.5px solid var(--border);
+    margin: 1rem 0 0.75rem;
+  }
+
+  .ctrl {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 9px;
+    font-size: 13px;
+    color: var(--text-sec);
+  }
+
+  .ctrl label { width: 120px; flex-shrink: 0; }
+
+  .ctrl .val {
+    width: 46px;
+    text-align: right;
+    font-weight: 500;
+    color: var(--text);
+  }
+
+  .ctrl input[type=range] {
+    flex: 1;
+    accent-color: var(--blue);
+  }
+
+  .param-tags {
+    font-size: 12px;
+    color: var(--text-sec);
+    line-height: 2;
+    margin-top: 6px;
+  }
+
+  .tag {
+    display: inline-block;
+    font-size: 11px;
+    padding: 1px 6px;
+    border-radius: 3px;
+    background: var(--bg-sec);
+    border: 0.5px solid var(--border);
+    color: var(--text-sec);
+    font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+    margin: 0 2px;
+  }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <h1>QUEST+ Radius Threshold Estimator</h1>
+  <p class="subtitle">
+    Decreasing Weibull · log₁₀ scale · min-entropy stimulus selection · posterior mean estimation
+  </p>
+
+  <div class="charts-grid">
+    <div class="chart-panel">
+      <div class="legend">
+        <span><span class="sw" style="background:#378add;"></span>Weibull (mean params)</span>
+        <span><span class="sw-dashed" style="border-color:#7F77DD;"></span>threshold</span>
+        <span><span class="sw-dashed" style="border-color:#EF9F27;"></span>next radius</span>
+      </div>
+      <div class="chart-wrap">
+        <canvas id="pfChart" role="img"
+          aria-label="Decreasing Weibull psychometric function. P(yes) falls as log10 radius increases."></canvas>
+      </div>
+    </div>
+    <div class="chart-panel">
+      <div class="legend">
+        <span><span class="sw" style="background:#888780;"></span>marginal posterior — threshold</span>
+      </div>
+      <div class="chart-wrap">
+        <canvas id="postChart" role="img"
+          aria-label="Marginal posterior over threshold values, updated after each trial."></canvas>
+      </div>
+    </div>
+  </div>
+
+  <div class="stimulus-row">
+    <div class="circle-panel">
+      <span class="circle-label">current stimulus</span>
+      <canvas id="circleCanvas" width="140" height="140"
+        role="img" aria-label="Circle stimulus whose radius represents the current log10 radius value."></canvas>
+      <span class="radius-readout">radius = <strong id="radiusLabel">—</strong></span>
+    </div>
+
+    <div>
+      <div class="resp-row">
+        <button class="resp-btn yes" id="btnYes" onclick="respond(1)">Yes — seen</button>
+        <button class="resp-btn no"  id="btnNo"  onclick="respond(0)">No — not seen</button>
+        <button class="reset-btn"   onclick="resetAll()">Reset</button>
+      </div>
+      <div class="computing" id="computing"></div>
+      <div class="cards">
+        <div class="card"><div class="clabel">Threshold (mean)</div><div class="cval" id="cvThresh">—</div></div>
+        <div class="card"><div class="clabel">Slope (mean)</div>    <div class="cval" id="cvSlope">—</div></div>
+        <div class="card"><div class="clabel">Entropy (bits)</div>  <div class="cval" id="cvEnt">—</div></div>
+        <div class="card"><div class="clabel">Trials</div>          <div class="cval" id="cvTrials">0</div></div>
+      </div>
+      <div class="history-row">Trial history: <span id="histBox">—</span></div>
+    </div>
+  </div>
+
+  <hr class="divider">
+
+  <div class="ctrl">
+    <label>Lower asymptote</label>
+    <input type="range" id="sl_guess" min="0.01" max="0.8" step="0.01" value="0.1" oninput="onParamChange()">
+    <span class="val" id="v_guess">0.10</span>
+  </div>
+
+  <div class="param-tags">
+    <span class="tag">func='weibull'</span> decreasing
+    <span class="tag">stim_scale='log10'</span>
+    <span class="tag">stim_selection_method='min_entropy'</span>
+    <span class="tag">param_estimation_method='mean'</span>
+    <span class="tag">lapse=0.2</span>
+    <span class="tag">slopes=linspace(2,8,40)</span>
+    <span class="tag">thresholds=arange(1,9,0.05)</span>
+  </div>
+
+</div>
+
+<script>
+const LAPSE   = 0.2;
+const XSTEP   = 0.05;
+const xs      = Array.from({length:160}, (_,i) => +(1 + i*XSTEP).toFixed(2));
+const N_STIM  = xs.length;
+const threshGrid = xs.slice();
+const N_THRESH   = threshGrid.length;
+const slopeGrid  = Array.from({length:40}, (_,i) => +(2 + i*(6/39)).toFixed(4));
+const N_SLOPES   = slopeGrid.length;
+const N_PARAMS   = N_THRESH * N_SLOPES;
+
+function weibull(x, thresh, slope, guess) {
+  const val = guess + (1 - guess - LAPSE) * (1 - Math.exp(-Math.pow(10, slope*(thresh - x))));
+  return Math.min(Math.max(val, 1e-6), 1-1e-6);
+}
+
+function criterionLevel(guess) {
+  return guess + (1 - guess - LAPSE) * (1 - Math.exp(-1));
+}
+
+let LIK_YES = new Float32Array(N_STIM * N_PARAMS);
+let LIK_NO  = new Float32Array(N_STIM * N_PARAMS);
+
+function precomputeLikelihoods(guess) {
+  for (let si = 0; si < N_STIM; si++) {
+    const base = si * N_PARAMS;
+    for (let ti = 0; ti < N_THRESH; ti++) {
+      for (let sli = 0; sli < N_SLOPES; sli++) {
+        const pi = ti * N_SLOPES + sli;
+        const p  = weibull(xs[si], threshGrid[ti], slopeGrid[sli], guess);
+        LIK_YES[base + pi] = p;
+        LIK_NO [base + pi] = 1 - p;
+      }
+    }
+  }
+}
+
+function normPost(post) {
+  let s = 0;
+  for (let i = 0; i < N_PARAMS; i++) s += post[i];
+  const out = new Float32Array(N_PARAMS);
+  for (let i = 0; i < N_PARAMS; i++) out[i] = post[i] / s;
+  return out;
+}
+
+function marginalThresh(post) {
+  const marg = new Float32Array(N_THRESH);
+  for (let ti = 0; ti < N_THRESH; ti++)
+    for (let sli = 0; sli < N_SLOPES; sli++)
+      marg[ti] += post[ti * N_SLOPES + sli];
+  let s = 0; for (let i=0;i<N_THRESH;i++) s += marg[i];
+  for (let i=0;i<N_THRESH;i++) marg[i] /= s;
+  return marg;
+}
+
+function marginalSlope(post) {
+  const marg = new Float32Array(N_SLOPES);
+  for (let ti = 0; ti < N_THRESH; ti++)
+    for (let sli = 0; sli < N_SLOPES; sli++)
+      marg[sli] += post[ti * N_SLOPES + sli];
+  let s = 0; for (let i=0;i<N_SLOPES;i++) s += marg[i];
+  for (let i=0;i<N_SLOPES;i++) marg[i] /= s;
+  return marg;
+}
+
+function weightedMean(vals, weights) {
+  let s = 0;
+  for (let i = 0; i < vals.length; i++) s += vals[i] * weights[i];
+  return s;
+}
+
+function shannonEntropy(post) {
+  let h = 0;
+  for (let i = 0; i < N_PARAMS; i++) if (post[i] > 0) h -= post[i] * Math.log2(post[i]);
+  return h;
+}
+
+function nextStim(post) {
+  let bestIdx = 0, bestH = Infinity;
+  for (let si = 0; si < N_STIM; si++) {
+    const base = si * N_PARAMS;
+    let pY = 0, pN = 0;
+    for (let pi = 0; pi < N_PARAMS; pi++) {
+      pY += LIK_YES[base+pi] * post[pi];
+      pN += LIK_NO [base+pi] * post[pi];
+    }
+    let hY = 0, hN = 0;
+    if (pY > 1e-12) {
+      for (let pi = 0; pi < N_PARAMS; pi++) {
+        const q = LIK_YES[base+pi] * post[pi] / pY;
+        if (q > 1e-12) hY -= q * Math.log2(q);
+      }
+    }
+    if (pN > 1e-12) {
+      for (let pi = 0; pi < N_PARAMS; pi++) {
+        const q = LIK_NO[base+pi] * post[pi] / pN;
+        if (q > 1e-12) hN -= q * Math.log2(q);
+      }
+    }
+    const H = pY*hY + pN*hN;
+    if (H < bestH) { bestH = H; bestIdx = si; }
+  }
+  return xs[bestIdx];
+}
+
+function updatePosterior(post, stimVal, resp) {
+  const si   = Math.min(N_STIM-1, Math.max(0, Math.round((stimVal - xs[0]) / XSTEP)));
+  const base = si * N_PARAMS;
+  const lik  = resp === 1 ? LIK_YES : LIK_NO;
+  const out  = new Float32Array(N_PARAMS);
+  let s = 0;
+  for (let pi = 0; pi < N_PARAMS; pi++) { out[pi] = post[pi] * lik[base+pi]; s += out[pi]; }
+  for (let pi = 0; pi < N_PARAMS; pi++) out[pi] /= s;
+  return out;
+}
+
+let state = {};
+
+function initState(guess) {
+  precomputeLikelihoods(guess);
+  const post = new Float32Array(N_PARAMS).fill(1/N_PARAMS);
+  const stim = nextStim(post);
+  state = { post, stim, trials:0, history:[], guess };
+}
+
+const isDark    = window.matchMedia('(prefers-color-scheme: dark)').matches;
+const gridColor = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.07)';
+const lblColor  = isDark ? '#aaa' : '#888';
+
+const pfChart = new Chart(document.getElementById('pfChart').getContext('2d'), {
+  type: 'line',
+  data: { labels: xs.map(x=>x.toFixed(2)), datasets:[
+    { data:[], borderColor:'#378add', borderWidth:2, pointRadius:0, tension:0.2, fill:false },
+    { data:[], borderColor:'#7F77DD', borderWidth:1.5, borderDash:[5,4], pointRadius:0, fill:false },
+    { data:[], borderColor:'#EF9F27', borderWidth:2,   borderDash:[2,3], pointRadius:0, fill:false }
+  ]},
+  options:{ responsive:true, maintainAspectRatio:false, animation:{duration:120},
+    plugins:{ legend:{display:false}, tooltip:{ filter:i=>i.datasetIndex===0,
+      callbacks:{ title:i=>'log₁₀(radius): '+i[0].label, label:i=>'p(yes) = '+i.parsed.y.toFixed(3) }}},
+    scales:{
+      x:{ title:{display:true, text:'log₁₀(radius)', color:lblColor, font:{size:11}},
+          ticks:{color:lblColor, maxTicksLimit:9,
+            callback:(_,i)=>{ const v=xs[i]; return Number.isInteger(v)?v.toFixed(0):null; }},
+          grid:{color:gridColor}, border:{color:gridColor} },
+      y:{ min:0, max:1, title:{display:true, text:'P(yes)', color:lblColor, font:{size:11}},
+          ticks:{color:lblColor, stepSize:0.25, callback:v=>(v*100).toFixed(0)+'%'},
+          grid:{color:gridColor}, border:{color:gridColor} }
+    }}
+});
+
+const postChart = new Chart(document.getElementById('postChart').getContext('2d'), {
+  type:'line',
+  data:{ labels: threshGrid.map(t=>t.toFixed(2)), datasets:[
+    { data:[], borderColor: isDark?'rgba(136,135,128,0.9)':'rgba(95,94,90,0.7)',
+      backgroundColor: isDark?'rgba(136,135,128,0.18)':'rgba(136,135,128,0.13)',
+      borderWidth:1.5, pointRadius:0, tension:0.3, fill:true }
+  ]},
+  options:{ responsive:true, maintainAspectRatio:false, animation:{duration:120},
+    plugins:{ legend:{display:false}, tooltip:{ callbacks:{
+      title:i=>'Threshold: '+i[0].label, label:i=>'p = '+i.parsed.y.toFixed(4) }}},
+    scales:{
+      x:{ title:{display:true, text:'Threshold (log₁₀ scale)', color:lblColor, font:{size:11}},
+          ticks:{color:lblColor, maxTicksLimit:9,
+            callback:(_,i)=>{ const v=threshGrid[i]; return Number.isInteger(v)?v.toFixed(0):null; }},
+          grid:{color:gridColor}, border:{color:gridColor} },
+      y:{ title:{display:true, text:'Probability', color:lblColor, font:{size:11}},
+          ticks:{color:lblColor, maxTicksLimit:5, callback:v=>v.toFixed(3)},
+          grid:{color:gridColor}, border:{color:gridColor} }
+    }}
+});
+
+const cCanvas = document.getElementById('circleCanvas');
+const cCtx    = cCanvas.getContext('2d');
+const CX = 70, CY = 70, RMIN = 3, RMAX = 58;
+
+function radiusToPx(r) {
+  return RMIN + (RMAX - RMIN) * (r - xs[0]) / (xs[xs.length-1] - xs[0]);
+}
+
+function drawCircle(r) {
+  const px = radiusToPx(r);
+  cCtx.clearRect(0,0,140,140);
+  cCtx.beginPath();
+  cCtx.arc(CX,CY,Math.max(px,1),0,Math.PI*2);
+  cCtx.fillStyle   = isDark?'rgba(55,138,221,0.12)':'rgba(55,138,221,0.08)';
+  cCtx.fill();
+  cCtx.strokeStyle = isDark?'#378add':'#185FA5';
+  cCtx.lineWidth   = 2;
+  cCtx.stroke();
+  cCtx.beginPath();
+  cCtx.arc(CX,CY,2.5,0,Math.PI*2);
+  cCtx.fillStyle   = isDark?'rgba(255,255,255,0.4)':'rgba(0,0,0,0.2)';
+  cCtx.fill();
+}
+
+let animId = null;
+function animateCircle(from, to, onDone) {
+  if (animId) cancelAnimationFrame(animId);
+  const dur = 380, t0 = performance.now();
+  function step(now) {
+    const t = Math.min((now-t0)/dur,1);
+    const e = t<0.5?2*t*t:-1+(4-2*t)*t;
+    drawCircle(from + (to-from)*e);
+    t<1 ? (animId=requestAnimationFrame(step)) : (drawCircle(to), onDone&&onDone());
+  }
+  animId = requestAnimationFrame(step);
+}
+
+function setButtons(disabled) {
+  document.getElementById('btnYes').disabled = disabled;
+  document.getElementById('btnNo').disabled  = disabled;
+  document.getElementById('computing').textContent = disabled ? 'Computing next stimulus…' : '';
+}
+
+function renderCharts() {
+  const {post, stim, guess} = state;
+  const pn         = normPost(post);
+  const margT      = marginalThresh(pn);
+  const margS      = marginalSlope(pn);
+  const meanThresh = weightedMean(threshGrid, Array.from(margT));
+  const meanSlope  = weightedMean(slopeGrid,  Array.from(margS));
+  const ent        = shannonEntropy(pn);
+  const critV      = criterionLevel(guess);
+
+  pfChart.data.datasets[0].data = xs.map(x => weibull(x, meanThresh, meanSlope, guess));
+
+  const tidx = Math.min(N_STIM-1, Math.max(0, Math.round((meanThresh - xs[0]) / XSTEP)));
+  const threshLine = new Array(N_STIM).fill(null);
+  for (let i = tidx; i < N_STIM; i++) threshLine[i] = critV;
+  pfChart.data.datasets[1].data = threshLine;
+
+  const sidx = Math.min(N_STIM-1, Math.max(0, Math.round((stim - xs[0]) / XSTEP)));
+  const stimLine = new Array(N_STIM).fill(null);
+  stimLine[sidx] = 0;
+  if (sidx+1 < N_STIM) stimLine[sidx+1] = 1;
+  pfChart.data.datasets[2].data = stimLine;
+  pfChart.update();
+
+  postChart.data.datasets[0].data = Array.from(margT);
+  postChart.update();
+
+  document.getElementById('radiusLabel').textContent = stim.toFixed(2);
+  document.getElementById('cvThresh').textContent    = meanThresh.toFixed(2);
+  document.getElementById('cvSlope').textContent     = meanSlope.toFixed(2);
+  document.getElementById('cvEnt').textContent       = ent.toFixed(2);
+  document.getElementById('cvTrials').textContent    = state.trials;
+
+  const hb = document.getElementById('histBox');
+  hb.innerHTML = state.history.length===0 ? '—' :
+    state.history.map(h =>
+      `<span class="hist-item ${h.r===1?'hist-yes':'hist-no'}">${h.s.toFixed(2)} ${h.r===1?'Y':'N'}</span>`
+    ).join('');
+}
+
+function respond(r) {
+  setButtons(true);
+  const prev = state.stim;
+  state.post   = updatePosterior(state.post, prev, r);
+  state.trials++;
+  state.history.push({s:prev, r});
+  setTimeout(() => {
+    state.stim = nextStim(normPost(state.post));
+    renderCharts();
+    animateCircle(prev, state.stim, () => setButtons(false));
+  }, 10);
+}
+
+function resetAll() {
+  const guess = parseFloat(document.getElementById('sl_guess').value);
+  setButtons(true);
+  setTimeout(() => {
+    initState(guess);
+    renderCharts();
+    drawCircle(state.stim);
+    setButtons(false);
+  }, 10);
+}
+
+function onParamChange() {
+  document.getElementById('v_guess').textContent =
+    parseFloat(document.getElementById('sl_guess').value).toFixed(2);
+  resetAll();
+}
+
+const g0 = parseFloat(document.getElementById('sl_guess').value);
+document.getElementById('v_guess').textContent = g0.toFixed(2);
+setButtons(true);
+setTimeout(() => {
+  initState(g0);
+  renderCharts();
+  drawCircle(state.stim);
+  setButtons(false);
+}, 20);
+</script>
+</body>
+</html>
